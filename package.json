@@ -1,0 +1,13 @@
+{
+  "name": "basix_webcall",
+  "version": "1.0.0",
+  "description": "Single outbound SIP/WebRTC calls to Basix from a browser",
+  "main": "index.js",
+  "scripts": { "test": "node test/webcall.test.js" },
+  "license": "MIT",
+  "dependencies": {
+    "events": "^3.3.0",
+    "sip.js": "https://github.com/MayamaTakeshi/onsip-SIP.js#3756d04bc10cbd1c12b9a891cf8ccfd9a42505c7"
+  },
+  "overrides": { "crypto-js": "^4.2.0" }
+}
