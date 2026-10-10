@@ -5,6 +5,7 @@
   "description": "Node web app demonstrating one Basix WebRTC call",
   "engines": { "node": ">=20" },
   "scripts": {
+    "postinstall": "npm install --prefix .. --omit=dev",
     "build": "node build.js",
     "prestart": "npm run build",
     "start": "node server.js",

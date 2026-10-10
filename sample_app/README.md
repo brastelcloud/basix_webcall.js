@@ -13,6 +13,10 @@ npm install
 cp config/default.json.sample config/default.json
 ```
 
+Installing in `sample_app` also installs the parent library's dependencies.
+This is required because npm does not install dependencies of the linked
+`file:..` package automatically.
+
 Edit `config/default.json`:
 
 The server checks `/etc/secrets/config.json` first (for example, a Render secret
@@ -127,6 +131,15 @@ update it to the new URL, or remove it to detect the host automatically.
 HTTPS is required for browser microphone access beyond localhost.
 Restart the app after changing settings or renewing certificate files.
 Keep `tls.enabled: false` and `trust_proxy: true` for your existing HTTPS proxy.
+
+For Render, set the service root directory to `sample_app`, the build command
+to `npm install --include=dev && npm run build`, and the start command to
+`npm start`. Include development dependencies during the build because esbuild
+is needed to produce the browser bundle. Provide `/etc/secrets/config.json`
+with your Basix settings and `host: "0.0.0.0"`, `port: 10000`,
+`trust_proxy: true`, and `tls: { "enabled": false }`.
+Render terminates HTTPS before forwarding HTTP to Node. If you configure a
+different Render listening port, use that port in the JSON as well.
 
 The SIP WebSocket connects directly from the browser to Basix using
 `wss://<host>/basix/api/ws_sip?ticket=<ticket>`.
