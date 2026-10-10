@@ -1,6 +1,8 @@
 "use strict";
 
 const http = require("node:http");
+const https = require("node:https");
+const { readFileSync } = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -20,6 +22,14 @@ function validateConfig(config) {
   if (config.trust_proxy !== undefined && typeof config.trust_proxy !== "boolean") {
     throw new Error("trust_proxy must be a boolean");
   }
+  const tls = config.tls ?? { enabled: false };
+  if (!tls || typeof tls !== "object" || Array.isArray(tls) ||
+      (tls.enabled !== undefined && typeof tls.enabled !== "boolean")) {
+    throw new Error("tls must be an object with a boolean enabled setting");
+  }
+  if (tls.enabled && [tls.key_file, tls.cert_file].some(file => typeof file !== "string" || !file.trim())) {
+    throw new Error("Set tls.key_file and tls.cert_file when TLS is enabled");
+  }
   let publicOrigin;
   if (config.public_origin) {
     const url = new URL(config.public_origin);
@@ -29,7 +39,7 @@ function validateConfig(config) {
     }
     publicOrigin = url.origin;
   }
-  return { ...config, trust_proxy: config.trust_proxy === true, public_origin: publicOrigin,
+  return { ...config, tls, trust_proxy: config.trust_proxy === true, public_origin: publicOrigin,
     basix_base_url: base.href.replace(/\/$/, ""), host: config.host || "127.0.0.1", port };
 }
 
@@ -81,7 +91,7 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
     "/style.css": ["style.css", "text/css; charset=utf-8"],
     "/app.bundle.js": ["app.bundle.js", "text/javascript; charset=utf-8"],
   };
-  return http.createServer(async (req, res) => {
+  const handler = async (req, res) => {
     try {
       const url = new URL(req.url, "http://localhost");
       const mountPath = "/basix_webcall_test";
@@ -159,7 +169,15 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
       if (!res.headersSent) json(res, 500, { error: "Unable to serve this request" });
       else res.end();
     }
-  });
+  };
+  if (config.tls.enabled) {
+    return https.createServer({
+      key: readFileSync(path.resolve(__dirname, config.tls.key_file)),
+      cert: readFileSync(path.resolve(__dirname, config.tls.cert_file)),
+      minVersion: "TLSv1.2",
+    }, handler);
+  }
+  return http.createServer(handler);
 }
 
 async function main() {
@@ -171,10 +189,16 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  const server = createServer(config);
+  let server;
+  try { server = createServer(config); }
+  catch (error) {
+    console.error("Cannot create server:", error.message);
+    process.exitCode = 1;
+    return;
+  }
   server.on("error", error => { console.error("Server failed:", error.message); process.exitCode = 1; });
   server.listen(config.port, config.host, () => {
-    console.log(`Sample app listening at http://${config.host}:${server.address().port}`);
+    console.log(`Sample app listening at ${config.tls.enabled ? "https" : "http"}://${config.host}:${server.address().port}`);
   });
 }
 

@@ -3,6 +3,11 @@
   "basix_domain_name": "YOUR_DOMAIN.basix.ne.jp",
   "basix_api_token": "YOUR_BASIX_API_TOKEN",
   "trust_proxy": true,
+  "tls": {
+    "enabled": false,
+    "key_file": "/path/to/privkey.pem",
+    "cert_file": "/path/to/fullchain.pem"
+  },
   "host": "127.0.0.1",
   "port": 3000
 }

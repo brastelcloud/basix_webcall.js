@@ -2,6 +2,11 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const https = require("node:https");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const { createServer, validateConfig } = require("../server");
 
 const config = {
@@ -122,6 +127,49 @@ test("validates required Basix configuration", () => {
   assert.throws(() => validateConfig({ ...config, basix_api_token: "" }), /token/);
   assert.throws(() => validateConfig({ ...config, public_origin: "https://example.com/app/" }), /public_origin/);
   assert.throws(() => validateConfig({ ...config, trust_proxy: "true" }), /trust_proxy/);
+  assert.equal(validateConfig(config).tls.enabled, false);
+  assert.throws(() => validateConfig({ ...config, tls: { enabled: "true" } }), /tls/);
+  assert.throws(() => validateConfig({ ...config, tls: { enabled: true } }), /key_file/);
+});
+
+test("direct HTTPS serves the page and obtains tickets without proxy headers", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "webcall-tls-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const key_file = path.join(directory, "key.pem");
+  const cert_file = path.join(directory, "cert.pem");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", key_file, "-out", cert_file, "-days", "1", "-subj", "/CN=localhost",
+    "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore" });
+  const server = createServer({ ...config, trust_proxy: false,
+    tls: { enabled: true, key_file, cert_file } }, {
+    fetchImpl: async () => ({ ok: true, json: async () => ({ result_code: 0, ticket: "abc123" }) }),
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise(resolve => {
+    server.closeAllConnections();
+    server.close(resolve);
+  }));
+  const base = `https://127.0.0.1:${server.address().port}`;
+  const request = (pathname, options = {}, body) => new Promise((resolve, reject) => {
+    const req = https.request(`${base}${pathname}`, { ca: fs.readFileSync(cert_file), ...options }, res => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", chunk => { text += chunk; });
+      res.on("end", () => resolve({ status: res.statusCode, text }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+  assert.equal((await request("/")).status, 200);
+  assert.equal((await request("/basix_webcall_test/")).status, 200);
+  const response = await request("/api/ws-ticket", {
+    method: "POST", headers: { "Content-Type": "application/json", Origin: base },
+  }, JSON.stringify({ destination: "123", peer_name: "Internet caller" }));
+  assert.equal(response.status, 200);
+  assert.equal(JSON.parse(response.text).ws_ticket, "abc123");
 });
 
 test("trusted proxy origin detection works across dev hosts and ports", async t => {

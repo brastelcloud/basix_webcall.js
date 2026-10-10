@@ -25,6 +25,10 @@ Edit `config/default.json`:
 - `public_origin` (optional): pins the allowed origin to a specific scheme,
   host, and port. This overrides automatic proxy detection when set.
 - `host` and `port`: local listener, default `127.0.0.1:3000`.
+- `tls.enabled`: serve HTTPS directly from Node when `true`; defaults to `false`.
+- `tls.key_file` and `tls.cert_file`: PEM private key and certificate chain files
+  required when TLS is enabled. Absolute paths are supported; relative paths
+  resolve from `sample_app`, regardless of the current working directory.
 
 Then run:
 
@@ -93,6 +97,32 @@ For a fixed origin instead, you can optionally set:
 
 Remove `public_origin` to enable automatic detection. Restart the Node server
 after changing its configuration.
+
+To deploy without a reverse proxy, update these settings in `config/default.json`
+alongside your existing Basix settings:
+
+```json
+{
+  "host": "0.0.0.0",
+  "port": 8443,
+  "trust_proxy": false,
+  "tls": {
+    "enabled": true,
+    "key_file": "/path/to/privkey.pem",
+    "cert_file": "/path/to/fullchain.pem"
+  }
+}
+```
+
+Use a browser-trusted certificate for your public hostname and make the files
+readable by the Node process. Run `npm start` and open
+`https://<your-host>:8443/`; `/basix_webcall_test/` also continues to work.
+Choose your listening port in the configuration. If you set `public_origin`,
+update it to the new URL, or remove it to detect the host automatically.
+HTTPS is required for browser microphone access beyond localhost.
+Restart the app after changing settings or renewing certificate files.
+Keep `tls.enabled: false` and `trust_proxy: true` for your existing HTTPS proxy.
+
 The SIP WebSocket connects directly from the browser to Basix using
 `wss://<host>/basix/api/ws_sip?ticket=<ticket>`.
 The SIP INVITE includes `X-DestTicket` with that same ticket ID.
