@@ -154,6 +154,16 @@ test("serves the page and stylesheet, keeps config and source files private", as
   }
 });
 
+test("health endpoint works at both paths without calling Basix or returning credentials", async t => {
+  const { base } = await app(t, () => { throw new Error("Health must not call Basix"); });
+  for (const pathname of ["/api/health", "/basix_webcall_test/api/health"]) {
+    const response = await fetch(`${base}${pathname}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), { status: "ok" });
+  }
+});
+
 test("rejects cross-origin ticket requests and non-JSON content", async t => {
   const { request, base } = await app(t, () => { throw new Error("Must not call Basix"); });
   assert.equal((await request({ destination: "123" }, { Origin: "https://other.example" })).status, 403);

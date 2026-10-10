@@ -141,6 +141,15 @@ with your Basix settings and `host: "0.0.0.0"`, `port: 10000`,
 Render terminates HTTPS before forwarding HTTP to Node. If you configure a
 different Render listening port, use that port in the JSON as well.
 
+While the page is open, the browser calls `GET ./api/health` every five minutes,
+on initial load, and when returning to the tab. This endpoint returns only
+`{ "status": "ok" }` and never contacts Basix or generates a ticket.
+The heartbeat stops when leaving the page and resumes if the browser restores it.
+Render's free service sleeps after 15 minutes without inbound traffic. The
+heartbeat helps while a browser keeps running the page; closing all tabs or
+browser suspension still allows the service to sleep. It does not guarantee
+continuous uptime or override Render's monthly usage limits.
+
 The SIP WebSocket connects directly from the browser to Basix using
 `wss://<host>/basix/api/ws_sip?ticket=<ticket>`.
 The SIP INVITE includes `X-DestTicket` with that same ticket ID.

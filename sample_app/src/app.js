@@ -17,6 +17,35 @@ let activeCall = null;
 let request = null;
 let keypadAudio = null;
 const pressTimers = new Map();
+let heartbeatTimer = null;
+let heartbeatRequest = null;
+
+async function heartbeat() {
+  if (heartbeatRequest) return;
+  const controller = new AbortController();
+  heartbeatRequest = controller;
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    await fetch("./api/health", { cache: "no-store", signal: controller.signal });
+  } catch (_) {
+    // Retry on the next interval without interrupting calls or their status.
+  } finally {
+    clearTimeout(timeout);
+    if (heartbeatRequest === controller) heartbeatRequest = null;
+  }
+}
+
+function startHeartbeat() {
+  if (heartbeatTimer !== null) return;
+  heartbeat();
+  heartbeatTimer = setInterval(heartbeat, 5 * 60 * 1000);
+}
+
+startHeartbeat();
+window.addEventListener("pageshow", startHeartbeat);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") heartbeat();
+});
 const toneFrequencies = {
   "1": [697, 1209], "2": [697, 1336], "3": [697, 1477],
   "4": [770, 1209], "5": [770, 1336], "6": [770, 1477],
@@ -174,6 +203,12 @@ playButton.addEventListener("click", async () => {
 });
 
 window.addEventListener("pagehide", () => {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+  if (heartbeatRequest) {
+    heartbeatRequest.abort();
+    heartbeatRequest = null;
+  }
   if (request) request.abort();
   for (const [button, timer] of pressTimers) {
     clearTimeout(timer);

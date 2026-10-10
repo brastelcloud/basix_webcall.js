@@ -103,6 +103,9 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
       const pathname = url.pathname.startsWith(`${mountPath}/`)
         ? url.pathname.slice(mountPath.length)
         : url.pathname;
+      if (pathname === "/api/health" && req.method === "GET") {
+        return json(res, 200, { status: "ok" });
+      }
       if (pathname === "/api/ws-ticket" && req.method === "POST") {
         if (!originAllowed(req, config)) {
           console.warn("Ticket request origin rejected:", {
