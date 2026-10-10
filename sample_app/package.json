@@ -6,7 +6,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "postinstall": "npm install --prefix .. --omit=dev",
-    "build": "node build.js",
+    "build": "npm install --include=dev && npm run build",
+    "dev_build": "node build.js",
     "prestart": "npm run build",
     "start": "node server.js",
     "test": "node test/server.test.js"
