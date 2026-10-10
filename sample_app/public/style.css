@@ -11,6 +11,7 @@ input { width: 100%; border: 1px solid #a8bac8; border-radius: 8px; font: inheri
 .actions { display: grid; grid-template-rows: repeat(4, 1fr); gap: 8px; }
 .actions button { padding: 10px 8px; font-size: 14px; }
 button { border: 0; border-radius: 8px; padding: 12px 20px; font: inherit; font-weight: 600; background: #176b78; color: white; cursor: pointer; }
+#call-button { background: #218739; }
 #hangup-button { background: #aa3434; }
 #clear-button, #backspace-button { background: #e8f0f4; color: #172b40; }
 .actions button:enabled:active { transform: translateY(2px); filter: brightness(.85); }

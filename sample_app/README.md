@@ -61,6 +61,8 @@ or the digit before the cursor. Destination editing controls disable during call
 Keys visibly depress and play a short local keypad tone when pressed. This
 feedback sound plays through your speakers; the IVR digit is sent separately
 through the call's DTMF media.
+The Call button is green. A short descending tone plays when the call ends,
+including a local or remote hangup. No disconnect tone plays when leaving the page.
 
 `npm start` rebuilds the browser bundle with esbuild. After changing browser or
 library code, restart the app or run `npm run build` and reload the page.

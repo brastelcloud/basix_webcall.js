@@ -16,6 +16,7 @@ const keypadHint = document.querySelector("#keypad-hint");
 let activeCall = null;
 let request = null;
 let keypadAudio = null;
+let pageClosing = false;
 const pressTimers = new Map();
 let heartbeatTimer = null;
 let heartbeatRequest = null;
@@ -42,7 +43,7 @@ function startHeartbeat() {
 }
 
 startHeartbeat();
-window.addEventListener("pageshow", startHeartbeat);
+window.addEventListener("pageshow", () => { pageClosing = false; startHeartbeat(); });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") heartbeat();
 });
@@ -53,28 +54,44 @@ const toneFrequencies = {
   "*": [941, 1209], "0": [941, 1336], "#": [941, 1477],
 };
 
-async function playKeyTone(key) {
+async function toneContext() {
   const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
+  if (!AudioContext || pageClosing) return null;
   if (!keypadAudio) keypadAudio = new AudioContext();
   if (keypadAudio.state === "suspended") await keypadAudio.resume();
-  if (!keypadAudio || keypadAudio.state !== "running") return;
-  const now = keypadAudio.currentTime;
+  return keypadAudio && keypadAudio.state === "running" && !pageClosing ? keypadAudio : null;
+}
+
+function scheduleTone(context, frequency, start, duration) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.frequency.value = frequency;
+  // Fade feedback tones in and out to avoid audible clicks.
+  gain.gain.setValueAtTime(0, start);
+  gain.gain.linearRampToValueAtTime(0.06, start + 0.005);
+  gain.gain.setValueAtTime(0.06, start + duration - 0.02);
+  gain.gain.linearRampToValueAtTime(0, start + duration);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+  oscillator.start(start);
+  oscillator.stop(start + duration);
+}
+
+async function playKeyTone(key) {
+  const context = await toneContext();
+  if (!context) return;
   for (const frequency of toneFrequencies[key]) {
-    const oscillator = keypadAudio.createOscillator();
-    const gain = keypadAudio.createGain();
-    oscillator.frequency.value = frequency;
-    // Fade the local feedback tone in and out to avoid audible clicks.
-    gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.06, now + 0.005);
-    gain.gain.setValueAtTime(0.06, now + 0.1);
-    gain.gain.linearRampToValueAtTime(0, now + 0.12);
-    oscillator.connect(gain);
-    gain.connect(keypadAudio.destination);
-    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
-    oscillator.start(now);
-    oscillator.stop(now + 0.12);
+    scheduleTone(context, frequency, context.currentTime, 0.12);
   }
+}
+
+async function playDisconnectTone() {
+  const context = await toneContext();
+  if (!context) return;
+  const now = context.currentTime;
+  scheduleTone(context, 480, now, 0.15);
+  scheduleTone(context, 320, now + 0.2, 0.2);
 }
 
 function showKeyPress(button) {
@@ -101,6 +118,8 @@ function busy(value) {
 form.addEventListener("submit", async event => {
   event.preventDefault();
   if (request || activeCall) return;
+  // Unlock feedback audio during the Call click, before asynchronous work.
+  toneContext().catch(() => {});
   busy(true);
   playButton.hidden = true;
   status.textContent = "Obtaining a call ticket…";
@@ -124,6 +143,9 @@ form.addEventListener("submit", async event => {
     request = null;
     const call = new BasixWebCall();
     activeCall = call;
+    call.once("ended", () => {
+      if (!pageClosing) playDisconnectTone().catch(() => {});
+    });
     call.on("connected", () => { status.textContent = "Calling…"; });
     call.on("progress", response => {
       if (response.statusCode === 180) status.textContent = "Ringing…";
@@ -203,6 +225,7 @@ playButton.addEventListener("click", async () => {
 });
 
 window.addEventListener("pagehide", () => {
+  pageClosing = true;
   clearInterval(heartbeatTimer);
   heartbeatTimer = null;
   if (heartbeatRequest) {
