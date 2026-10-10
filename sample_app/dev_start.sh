@@ -8,5 +8,4 @@ export http_proxy=
 export https_proxy=
 export NODE_TLS_REJECT_UNAUTHORIZED=0
 
-npm run dev_build
-node ./server.js
+npm start
