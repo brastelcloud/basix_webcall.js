@@ -180,12 +180,22 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
   return http.createServer(handler);
 }
 
+async function loadConfig(readFile = fs.readFile) {
+  let contents;
+  try {
+    contents = await readFile("/etc/secrets/config.json", "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    contents = await readFile(path.join(__dirname, "config", "default.json"), "utf8");
+  }
+  return validateConfig(JSON.parse(contents));
+}
+
 async function main() {
-  const filename = path.join(__dirname, "config", "default.json");
   let config;
-  try { config = validateConfig(JSON.parse(await fs.readFile(filename, "utf8"))); }
+  try { config = await loadConfig(); }
   catch (error) {
-    console.error(`Cannot load config/default.json: ${error.code === "ENOENT" ? "Copy config/default.json.sample to config/default.json and fill in your Basix settings." : error.message}`);
+    console.error(`Cannot load configuration: ${error.code === "ENOENT" ? "Provide /etc/secrets/config.json or copy config/default.json.sample to config/default.json and fill in your Basix settings." : error.message}`);
     process.exitCode = 1;
     return;
   }
@@ -203,4 +213,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { createServer, validateConfig };
+module.exports = { createServer, validateConfig, loadConfig };

@@ -7,13 +7,45 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const { createServer, validateConfig } = require("../server");
+const { createServer, validateConfig, loadConfig } = require("../server");
 
 const config = {
   basix_base_url: "https://qabcs.brastel.com/basix/",
   basix_domain_name: "example.basix.ne.jp",
   basix_api_token: "test-secret-token",
 };
+
+test("loads the Render secret configuration before the local file", async () => {
+  const files = [];
+  const loaded = await loadConfig(async (filename, encoding) => {
+    files.push(filename);
+    assert.equal(encoding, "utf8");
+    return JSON.stringify(config);
+  });
+  assert.deepEqual(files, ["/etc/secrets/config.json"]);
+  assert.equal(loaded.basix_api_token, config.basix_api_token);
+});
+
+test("falls back to local configuration only when the secret file is absent", async () => {
+  const files = [];
+  await loadConfig(async filename => {
+    files.push(filename);
+    if (filename === "/etc/secrets/config.json") {
+      throw Object.assign(new Error("Missing"), { code: "ENOENT" });
+    }
+    return JSON.stringify(config);
+  });
+  assert.deepEqual(files, ["/etc/secrets/config.json", path.resolve(__dirname, "../config/default.json")]);
+  for (const failure of [new Error("Permission denied"), new SyntaxError("Invalid JSON")]) {
+    let reads = 0;
+    await assert.rejects(loadConfig(async () => {
+      reads++;
+      if (failure instanceof SyntaxError) return "invalid JSON";
+      throw failure;
+    }));
+    assert.equal(reads, 1);
+  }
+});
 
 async function app(t, fetchImpl, overrides = {}) {
   const server = createServer({ ...config, ...overrides }, { fetchImpl });

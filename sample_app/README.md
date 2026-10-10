@@ -15,6 +15,11 @@ cp config/default.json.sample config/default.json
 
 Edit `config/default.json`:
 
+The server checks `/etc/secrets/config.json` first (for example, a Render secret
+file). If that file does not exist, it loads `sample_app/config/default.json`.
+Both files use the same configuration format. An unreadable or invalid secret
+file stops startup rather than falling back to the local configuration.
+
 - `basix_base_url`: Basix HTTP base URL including `/basix`, for example
   `https://bcs.brastel.com/basix`.
 - `basix_domain_name`: domain owning the API token, such as `example.basix.ne.jp`.
