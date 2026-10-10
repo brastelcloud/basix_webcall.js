@@ -63,6 +63,9 @@ feedback sound plays through your speakers; the IVR digit is sent separately
 through the call's DTMF media.
 The Call button is green. A short descending tone plays when the call ends,
 including a local or remote hangup. No disconnect tone plays when leaving the page.
+A distinct two-pulse tone plays if obtaining a ticket or placing the call fails,
+including a ticket timeout. Cancelling a pending ticket request does not play
+the failure tone. Leaving the page suppresses all call feedback tones.
 
 `npm start` rebuilds the browser bundle with esbuild. After changing browser or
 library code, restart the app or run `npm run build` and reload the page.

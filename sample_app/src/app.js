@@ -94,6 +94,16 @@ async function playDisconnectTone() {
   scheduleTone(context, 320, now + 0.2, 0.2);
 }
 
+async function playFailureTone() {
+  const context = await toneContext();
+  if (!context) return;
+  const now = context.currentTime;
+  for (const delay of [0, 0.3]) {
+    scheduleTone(context, 425, now + delay, 0.18);
+    scheduleTone(context, 325, now + delay, 0.18);
+  }
+}
+
 function showKeyPress(button) {
   clearTimeout(pressTimers.get(button));
   button.classList.add("pressed");
@@ -143,9 +153,6 @@ form.addEventListener("submit", async event => {
     request = null;
     const call = new BasixWebCall();
     activeCall = call;
-    call.once("ended", () => {
-      if (!pageClosing) playDisconnectTone().catch(() => {});
-    });
     call.on("connected", () => { status.textContent = "Calling…"; });
     call.on("progress", response => {
       if (response.statusCode === 180) status.textContent = "Ringing…";
@@ -157,9 +164,11 @@ form.addEventListener("submit", async event => {
     call.on("audioError", () => { playButton.hidden = false; });
     status.textContent = "Connecting…";
     await call.start({ ...args, audioElement: audio });
+    playDisconnectTone().catch(() => {});
     status.textContent = "Call ended.";
   } catch (error) {
     status.textContent = controller.signal.aborted ? "Call cancelled or ticket request timed out." : error.message;
+    if (controller.signal.reason !== "cancelled") playFailureTone().catch(() => {});
   } finally {
     clearTimeout(timeout);
     request = null;
@@ -172,7 +181,7 @@ form.addEventListener("submit", async event => {
 hangupButton.addEventListener("click", () => {
   status.textContent = "Ending call…";
   hangupButton.disabled = true;
-  if (request) request.abort();
+  if (request) request.abort("cancelled");
   if (activeCall) activeCall.hangup().catch(() => {});
 });
 
