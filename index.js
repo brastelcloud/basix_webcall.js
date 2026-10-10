@@ -3,18 +3,7 @@
 const EventEmitter = require("events");
 const SIP = require("sip.js");
 
-// SIP.js 0.13's URL parser rejects userinfo, although WebSocket accepts it.
-// Validate the endpoint without credentials, then retain the authenticated URL
-// for the actual socket. The SIP route still uses the endpoint's host.
-class TicketTransport extends SIP.Web.Transport {
-  constructor(logger, options) {
-    const url = new URL(options.wsServers);
-    url.username = "";
-    url.password = "";
-    super(logger, { ...options, wsServers: url.href });
-    this.server.wsUri = options.wsServers;
-  }
-
+class CallTransport extends SIP.Web.Transport {
   connect(options) {
     // UA.start() ignores this promise in 0.13. Report failures through the
     // lifecycle instead of leaving a rejected promise unhandled.
@@ -41,14 +30,28 @@ class BasixWebCall extends EventEmitter {
     if (this.state !== "idle") {
       return Promise.reject(new Error("This instance has already been used"));
     }
-    if (typeof args.ws_ticket !== "string" || !args.ws_ticket.trim()) {
-      return Promise.reject(new TypeError("ws_ticket must be a non-empty string"));
+    if (typeof args.ws_ticket !== "string" || !args.ws_ticket || /[\x00-\x20\x7f]/.test(args.ws_ticket)) {
+      return Promise.reject(new TypeError("ws_ticket must be a non-empty string without whitespace or control characters"));
     }
-    if (typeof args.destination !== "string" || !/^[+0-9*#]+$/.test(args.destination)) {
+    if (typeof args.destination !== "string" ||
+        !/^(?:[+0-9*#]+|destination_ticket\.[A-Za-z0-9_-]+)$/.test(args.destination)) {
       return Promise.reject(new TypeError("destination must be a dial string"));
+    }
+    let endpoint;
+    try {
+      endpoint = new URL(args.basix_base_url || "https://bcs.brastel.com/basix");
+      if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+        throw new Error("invalid endpoint");
+      }
+      endpoint.protocol = "wss:";
+      endpoint.pathname = endpoint.pathname.replace(/\/$/, "") + "/api/ws_sip";
+      endpoint.searchParams.set("ticket", args.ws_ticket);
+    } catch (_) {
+      return Promise.reject(new TypeError("basix_base_url must be an HTTPS URL without credentials, query, or fragment"));
     }
     this.state = "connecting";
     this._destination = args.destination;
+    this._wsTicket = args.ws_ticket;
     this._completion = new Promise((resolve, reject) => {
       this._resolve = resolve;
       this._reject = reject;
@@ -63,9 +66,9 @@ class BasixWebCall extends EventEmitter {
 
       this.ua = new SIP.UA({
         uri: "webcall@anything",
-        transportConstructor: TicketTransport,
+        transportConstructor: CallTransport,
         transportOptions: {
-          wsServers: `wss://ws_ticket:${encodeURIComponent(args.ws_ticket)}@bcs.brastel.com/basix/api/ws_sip`,
+          wsServers: endpoint.href,
           maxReconnectionAttempts: 0,
           // SIP.js 0.13 uses seconds for this value.
           connectionTimeout: 10,
@@ -74,6 +77,9 @@ class BasixWebCall extends EventEmitter {
         autostart: false,
         autostop: false,
         noAnswerTimeout: 180,
+        // Send IVR digits over the negotiated WebRTC telephone-event media.
+        // SIP.js falls back to INFO if the browser has no RTP DTMF sender.
+        dtmfType: "rtp",
         // The configuration contains the ticket; never log it.
         log: { builtinEnabled: false },
         sessionDescriptionHandlerFactoryOptions: {
@@ -117,6 +123,17 @@ class BasixWebCall extends EventEmitter {
     return this._completion || Promise.resolve();
   }
 
+  /** Send one keypad digit using RTP DTMF (SIP.js INFO fallback). */
+  sendDTMF(key) {
+    if (typeof key !== "string" || !/^[0-9*#]$/.test(key)) {
+      throw new TypeError("DTMF key must be one digit, * or #");
+    }
+    if (this.state !== "talking" || !this.session) {
+      throw new Error("DTMF requires an answered call");
+    }
+    return this.session.dtmf(key);
+  }
+
   _listen(emitter, event, listener) {
     emitter.on(event, listener);
     this._listeners.push(() => emitter.removeListener(event, listener));
@@ -129,6 +146,7 @@ class BasixWebCall extends EventEmitter {
     this.state = "calling";
     try {
       this.session = this.ua.invite(`sip:${this._destination}@anything`, {
+        extraHeaders: [`X-DestTicket: ${this._wsTicket}`],
         sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
       });
       this._listen(this.session, "progress", response => {
@@ -238,6 +256,7 @@ class BasixWebCall extends EventEmitter {
     this.session = null;
     this.ua = null;
     this._transport = null;
+    this._wsTicket = null;
     this.audio = null;
     if (this._error) this._reject(this._error);
     else this._resolve(this._result);

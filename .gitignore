@@ -128,6 +128,10 @@ dist
 # pnpm
 .pnpm-store
 
+# Sample app local credentials and generated browser bundle
+sample_app/config/default.json
+sample_app/public/app.bundle.js
+
 # yarn v3
 .pnp.*
 .yarn/*

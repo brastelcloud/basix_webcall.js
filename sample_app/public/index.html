@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Basix Web Call</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.bundle.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">BASIX · WEB CALL</p>
+    <h1>Make a call</h1>
+    <p>Call your Basix destination directly from your browser.</p>
+    <form id="call-form">
+      <label for="peer-name">Peer name</label>
+      <input id="peer-name" name="peer_name" type="text" placeholder="Your name"
+        autocomplete="name" maxlength="128" required>
+      <label for="destination">Destination</label>
+      <input id="destination" name="destination" type="tel" value="0312341234"
+        autocomplete="tel" pattern="[+0-9*#]+" maxlength="64" required>
+    </form>
+    <fieldset id="keypad">
+      <legend>Dialpad</legend>
+      <div class="dialpad-layout">
+      <div class="keypad-grid">
+        <button type="button" data-dtmf="1">1</button>
+        <button type="button" data-dtmf="2">2</button>
+        <button type="button" data-dtmf="3">3</button>
+        <button type="button" data-dtmf="4">4</button>
+        <button type="button" data-dtmf="5">5</button>
+        <button type="button" data-dtmf="6">6</button>
+        <button type="button" data-dtmf="7">7</button>
+        <button type="button" data-dtmf="8">8</button>
+        <button type="button" data-dtmf="9">9</button>
+        <button type="button" data-dtmf="*" aria-label="Star">*</button>
+        <button type="button" data-dtmf="0">0</button>
+        <button type="button" data-dtmf="#" aria-label="Hash">#</button>
+      </div>
+      <div class="actions">
+        <button id="call-button" type="submit" form="call-form">Call</button>
+        <button id="hangup-button" type="button" disabled>Hang up</button>
+        <button id="clear-button" type="button">Clear</button>
+        <button id="backspace-button" type="button" aria-label="Backspace destination digit">Backspace</button>
+      </div>
+      </div>
+      <p id="keypad-hint" class="hint">Enter the destination here. During an answered call, digits go to the voice menu.</p>
+    </fieldset>
+    <p id="status" role="status" aria-live="polite">Ready to call.</p>
+    <button id="play-audio-button" type="button" hidden>Enable audio</button>
+    <audio id="remote-audio" autoplay></audio>
+    <p class="hint">Allow microphone access when your browser asks.</p>
+  </main>
+</body>
+</html>

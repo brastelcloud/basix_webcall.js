@@ -8,8 +8,6 @@ Install with `npm install`, then import the library in your browser application
 using a CommonJS-compatible bundler. It uses the same pinned SIP.js 0.13.8 fork
 as `basix_webphone.js`.
 Its transitive `crypto-js` dependency is overridden to version 4.2 or later.
-An internal transport adapter supports credentials in the WebSocket URL, which
-the legacy SIP.js URL validator otherwise rejects.
 
 ```javascript
 const BasixWebCall = require("basix_webcall");
@@ -39,11 +37,20 @@ function onHangupButtonClick() {
 `start({ ws_ticket, destination, audioElement? })` returns a promise that resolves
 with `{ cause }` after shutdown, or rejects for connection, microphone, or call
 failures (including busy/rejected calls). Use a new instance for each call.
-`ws_ticket` is used as the password in
-`wss://ws_ticket:<encoded ticket>@bcs.brastel.com/basix/api/ws_sip`.
+`ws_ticket` is passed as the URL-encoded `ticket` query parameter in
+`wss://bcs.brastel.com/basix/api/ws_sip?ticket=<encoded ticket>`.
+The SIP INVITE also includes `X-DestTicket: <ticket>` with the same original
+ticket value. Tickets must not contain whitespace or control characters.
+Optional `basix_base_url` changes the HTTP base URL used to derive the WebSocket
+endpoint (default `https://bcs.brastel.com/basix`). It must use HTTPS.
 The destination is a string of digits, optionally including `+`, `*`, or `#`;
 leading zeroes are preserved. Calls use `sip:<destination>@anything`, matching
 the PBX routing convention used by the webphone.
+For end-user tickets bound to a destination by the Basix API, pass
+`destination: "destination_ticket.<ticket>"` instead.
+
+See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
+on the server and places calls from the browser.
 
 The library creates and removes an autoplay audio element by default. You may
 supply an existing audio element; it is paused and detached during cleanup but
@@ -62,6 +69,11 @@ hangup. Connection setup has a ten-second limit; shutdown allows five seconds fo
 SIP transactions before forcing transport closure. Automatic reconnect is disabled.
 The library terminates its own connection and resources; it does not close the
 browser tab.
+
+`sendDTMF(key)` sends one `0`–`9`, `*`, or `#` digit to an answered call for IVR
+interaction. It throws if the digit is invalid or the call is not in `talking`
+state. It uses WebRTC RTP telephone-event DTMF, with SIP.js's INFO fallback when
+the browser cannot send RTP DTMF.
 
 Run `npm test` for lifecycle tests with mocked SIP and browser objects. A live
 browser call with a valid ticket is still needed to verify PBX routing, microphone

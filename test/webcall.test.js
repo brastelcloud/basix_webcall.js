@@ -47,6 +47,8 @@ function setup(t, { delayedClose = false, inviteError = false, realTransport = f
     invite(target, options) {
       if (inviteError) throw new Error("invite failed");
       const session = new EventEmitter();
+      session.dtmfKeys = [];
+      session.dtmf = key => { session.dtmfKeys.push(key); };
       session.sessionDescriptionHandler = {
         peerConnection: { getReceivers: () => [{ track: { id: "remote" } }] },
         close: () => { session.mediaClosed = true; },
@@ -102,14 +104,20 @@ test("connects with ticket, dials exactly once, plays audio, closes after remote
   const completion = call.start(args);
   const ua = uas[0];
   assert.equal(ua.config.transportOptions.wsServers,
-    "wss://ws_ticket:test%3Aticket%2F%40@bcs.brastel.com/basix/api/ws_sip");
+    "wss://bcs.brastel.com/basix/api/ws_sip?ticket=test%3Aticket%2F%40");
+  const wsUrl = new URL(ua.config.transportOptions.wsServers);
+  assert.equal(wsUrl.username, "");
+  assert.equal(wsUrl.password, "");
+  assert.equal(wsUrl.searchParams.get("ticket"), args.ws_ticket);
   assert.equal(ua.config.register, false);
   assert.equal(ua.config.transportOptions.maxReconnectionAttempts, 0);
+  assert.equal(ua.config.dtmfType, "rtp");
   assert.equal(ua.calls.length, 0);
   ua.transport.emit("connected");
   ua.transport.emit("connected");
   assert.equal(ua.calls.length, 1);
   assert.equal(ua.calls[0].target, "sip:0312341234@anything");
+  assert.deepEqual(ua.calls[0].options.extraHeaders, [`X-DestTicket: ${wsUrl.searchParams.get("ticket")}`]);
   const session = ua.calls[0].session;
   session.emit("trackAdded");
   session.emit("accepted", {});
@@ -195,8 +203,71 @@ test("invalid parameters do not create a user agent", async t => {
   const { call, uas } = setup(t);
   await assert.rejects(call.start({ destination: args.destination }), /ws_ticket/);
   await assert.rejects(call.start({ ...args, destination: "123@host" }), /destination/);
+  await assert.rejects(call.start({ ...args, ws_ticket: "ticket\r\nX-Injected: value" }), /ws_ticket/);
   assert.equal(uas.length, 0);
   assert.equal(call.state, "idle");
+});
+
+test("sends keypad tones only during an answered call", async t => {
+  const { call, uas } = setup(t);
+  assert.throws(() => call.sendDTMF("1"), /answered call/);
+  const completion = call.start(args);
+  uas[0].transport.emit("connected");
+  assert.throws(() => call.sendDTMF("1"), /answered call/);
+  const session = uas[0].calls[0].session;
+  session.emit("accepted", {});
+  for (const key of "123456789*0#") call.sendDTMF(key);
+  assert.deepEqual(session.dtmfKeys, [..."123456789*0#"]);
+  for (const key of ["12", "A", "", 1]) assert.throws(() => call.sendDTMF(key), /DTMF key/);
+  call.hangup();
+  await completion;
+  assert.throws(() => call.sendDTMF("1"), /answered call/);
+});
+
+test("real SIP.js DTMF sends IVR digits through the WebRTC media handler", async t => {
+  const { call, uas } = setup(t);
+  const completion = call.start(args);
+  uas[0].transport.emit("connected");
+  const session = uas[0].calls[0].session;
+  const { Session } = require("sip.js/lib/Session");
+  const { SessionStatus } = require("sip.js/lib/Enums");
+  const sent = [];
+  session.ua = { configuration: uas[0].config };
+  session.status = SessionStatus.STATUS_CONFIRMED;
+  session.sessionDescriptionHandler.sendDtmf = (tones, options) => {
+    sent.push(tones);
+    return true;
+  };
+  session.dtmf = Session.prototype.dtmf;
+  session.emit("accepted", {});
+  for (const key of "1*#") call.sendDTMF(key);
+  assert.deepEqual(sent, ["1", "*", "#"]);
+  assert.equal(session.tones, undefined); // No SIP INFO tone queue was used.
+  call.hangup();
+  await completion;
+});
+
+test("supports destination tickets and a configured Basix server", async t => {
+  const { call, uas } = setup(t);
+  const completion = call.start({ ...args,
+    destination: "destination_ticket.abc123",
+    basix_base_url: "https://qabcs.brastel.com/basix/",
+  });
+  assert.equal(uas[0].config.transportOptions.wsServers,
+    "wss://qabcs.brastel.com/basix/api/ws_sip?ticket=test%3Aticket%2F%40");
+  uas[0].transport.emit("connected");
+  assert.equal(uas[0].calls[0].target, "sip:destination_ticket.abc123@anything");
+  assert.deepEqual(uas[0].calls[0].options.extraHeaders, [`X-DestTicket: ${args.ws_ticket}`]);
+  call.hangup();
+  await completion;
+});
+
+test("rejects unsafe or non-HTTPS Basix endpoints", async t => {
+  const { call, uas } = setup(t);
+  for (const basix_base_url of ["http://example.com", "https://user:secret@example.com", "https://example.com?secret=x"]) {
+    await assert.rejects(call.start({ ...args, basix_base_url }), /HTTPS URL/);
+  }
+  assert.equal(uas.length, 0);
 });
 
 test("real pinned SIP.js transport closes promptly despite suppressed disconnected event", async t => {

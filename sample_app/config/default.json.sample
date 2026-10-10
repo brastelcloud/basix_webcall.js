@@ -1,0 +1,8 @@
+{
+  "basix_base_url": "https://bcs.brastel.com/basix",
+  "basix_domain_name": "YOUR_DOMAIN.basix.ne.jp",
+  "basix_api_token": "YOUR_BASIX_API_TOKEN",
+  "trust_proxy": true,
+  "host": "127.0.0.1",
+  "port": 3000
+}
