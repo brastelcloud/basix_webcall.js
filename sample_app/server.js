@@ -123,10 +123,10 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
         if (!args || typeof args.destination !== "string" || !/^[+0-9*#]{1,64}$/.test(args.destination)) {
           return json(res, 400, { error: "Enter a destination containing digits, +, *, or #" });
         }
-        if (typeof args.peer_name !== "string" || !args.peer_name.trim() ||
-            args.peer_name.trim().length > 128 || /[\x00-\x1f\x7f]/.test(args.peer_name)) {
-          return json(res, 400, { error: "Enter a peer name of 1 to 128 characters without control characters" });
+        if (typeof args.peer_name !== "string" || !args.peer_name || args.peer_name.length > 128) {
+          return json(res, 400, { error: "Enter a peer name of 1 to 128 characters" });
         }
+        const peerName = args.peer_name.replace(/[^0-9a-zA-Z.]/gu, ".");
         let data;
         try {
           const upstream = await fetchImpl(`${config.basix_base_url}/api/gen_ws_ticket`, {
@@ -138,7 +138,7 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
             body: JSON.stringify({
               uri: `${new URL(config.basix_base_url).pathname}/api/ws_sip`,
               destination: args.destination,
-              peer_name: args.peer_name.trim(),
+              peer_name: peerName,
             }),
             signal: AbortSignal.timeout(10000),
             redirect: "error",
@@ -154,7 +154,7 @@ function createServer(rawConfig, { fetchImpl = fetch } = {}) {
         }
         return json(res, 200, {
           ws_ticket: data.ticket,
-          destination: `destination_ticket.${data.ticket}`,
+          destination: args.destination,
           basix_base_url: config.basix_base_url,
         });
       }

@@ -84,7 +84,7 @@ form.addEventListener("submit", async event => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         destination: destination.value.trim(),
-        peer_name: peerName.value.trim(),
+        peer_name: peerName.value,
       }),
       signal: controller.signal,
     });

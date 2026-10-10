@@ -46,8 +46,8 @@ endpoint (default `https://bcs.brastel.com/basix`). It must use HTTPS.
 The destination is a string of digits, optionally including `+`, `*`, or `#`;
 leading zeroes are preserved. Calls use `sip:<destination>@anything`, matching
 the PBX routing convention used by the webphone.
-For end-user tickets bound to a destination by the Basix API, pass
-`destination: "destination_ticket.<ticket>"` instead.
+The Request-URI and To header use the actual destination; the ticket is carried
+separately in `X-DestTicket`.
 
 See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
 on the server and places calls from the browser.

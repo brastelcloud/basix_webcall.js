@@ -34,7 +34,7 @@ class BasixWebCall extends EventEmitter {
       return Promise.reject(new TypeError("ws_ticket must be a non-empty string without whitespace or control characters"));
     }
     if (typeof args.destination !== "string" ||
-        !/^(?:[+0-9*#]+|destination_ticket\.[A-Za-z0-9_-]+)$/.test(args.destination)) {
+        !/^[+0-9*#]+$/.test(args.destination)) {
       return Promise.reject(new TypeError("destination must be a dial string"));
     }
     let endpoint;

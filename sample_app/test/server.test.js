@@ -80,7 +80,7 @@ test("obtains a destination-bound ticket with server-side Basic authentication",
   const text = await response.text();
   assert.ok(!text.includes(config.basix_api_token));
   assert.deepEqual(JSON.parse(text), {
-    ws_ticket: "abc123", destination: "destination_ticket.abc123",
+    ws_ticket: "abc123", destination: "0312341234",
     basix_base_url: "https://qabcs.brastel.com/basix",
   });
   assert.equal(upstreamRequest.url, "https://qabcs.brastel.com/basix/api/gen_ws_ticket");
@@ -88,7 +88,7 @@ test("obtains a destination-bound ticket with server-side Basic authentication",
   assert.equal(upstreamRequest.options.headers.Authorization,
     `Basic ${Buffer.from(`${config.basix_domain_name}:${config.basix_api_token}`).toString("base64")}`);
   assert.deepEqual(JSON.parse(upstreamRequest.options.body), {
-    uri: "/basix/api/ws_sip", destination: "0312341234", peer_name: "山田 太郎",
+    uri: "/basix/api/ws_sip", destination: "0312341234", peer_name: ".........",
   });
 });
 
@@ -104,12 +104,24 @@ test("invalid destinations are rejected before reaching Basix", async t => {
 test("missing or invalid peer names are rejected before reaching Basix", async t => {
   let requests = 0;
   const { request } = await app(t, () => { requests++; });
-  for (const peer_name of [undefined, "", "   ", 123, "a".repeat(129), "name\r\nother"]) {
+  for (const peer_name of [undefined, "", 123, "a".repeat(129)]) {
     const response = await request({ destination: "0312341234", peer_name });
     assert.equal(response.status, 400);
     assert.match((await response.json()).error, /peer name/);
   }
   assert.equal(requests, 0);
+});
+
+test("replaces each invalid peer name character with a dot", async t => {
+  const names = [];
+  const { request } = await app(t, async (_, options) => {
+    names.push(JSON.parse(options.body).peer_name);
+    return { ok: true, json: async () => ({ result_code: 0, ticket: "abc123" }) };
+  });
+  for (const peer_name of ["AZaz09.name", " John_Doe-42@x ", "name\r\nother", "山田🙂", "   "]) {
+    assert.equal((await request({ destination: "123", peer_name })).status, 200);
+  }
+  assert.deepEqual(names, ["AZaz09.name", ".John.Doe.42.x.", "name..other", "...", "..."]);
 });
 
 test("Basix HTTP, API, and network failures do not expose upstream secrets", async t => {

@@ -247,16 +247,16 @@ test("real SIP.js DTMF sends IVR digits through the WebRTC media handler", async
   await completion;
 });
 
-test("supports destination tickets and a configured Basix server", async t => {
+test("dials the actual destination with a configured Basix server", async t => {
   const { call, uas } = setup(t);
   const completion = call.start({ ...args,
-    destination: "destination_ticket.abc123",
+    destination: "0312341234",
     basix_base_url: "https://qabcs.brastel.com/basix/",
   });
   assert.equal(uas[0].config.transportOptions.wsServers,
     "wss://qabcs.brastel.com/basix/api/ws_sip?ticket=test%3Aticket%2F%40");
   uas[0].transport.emit("connected");
-  assert.equal(uas[0].calls[0].target, "sip:destination_ticket.abc123@anything");
+  assert.equal(uas[0].calls[0].target, "sip:0312341234@anything");
   assert.deepEqual(uas[0].calls[0].options.extraHeaders, [`X-DestTicket: ${args.ws_ticket}`]);
   call.hangup();
   await completion;

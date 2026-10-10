@@ -149,16 +149,19 @@ The backend sends `POST <basix_base_url>/api/gen_ws_ticket` with Basic
 authentication (`basix_domain_name:basix_api_token`) and JSON:
 
 ```json
-{ "uri": "/basix/api/ws_sip", "destination": "0312341234", "peer_name": "Test caller" }
+{ "uri": "/basix/api/ws_sip", "destination": "0312341234", "peer_name": "Test.caller" }
 ```
 
 It expects `{ "result_code": 0, "ticket": "..." }`. Basix binds the destination
-to that ticket, and the browser dials `destination_ticket.<ticket>@anything` as
-required by the end-user SIP frontend. The WebSocket host follows
+to that ticket, and the browser dials `sip:<destination>@anything`. The SIP
+Request-URI and To header contain the actual destination; `X-DestTicket`
+contains the ticket ID. The WebSocket host follows
 `basix_base_url`. Tickets expire after ten seconds, so the browser starts the
 call immediately after obtaining one.
-The peer name is required, trimmed, and limited to 128 characters. It is included
-in the `gen_ws_ticket` request as `peer_name`.
+The peer name is required and limited to 128 characters. Before sending it in
+the `gen_ws_ticket` request, the server replaces every character outside
+`0-9`, `a-z`, `A-Z`, and `.` with a dot, including leading and trailing spaces.
+For example, `John Doe_42` becomes `John.Doe.42`.
 
 Only the three files in `public` are served; `config/default.json` is ignored by
 Git. The sample runs locally without application login. Add appropriate access
