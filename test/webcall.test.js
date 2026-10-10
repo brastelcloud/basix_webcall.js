@@ -117,6 +117,7 @@ test("connects with ticket, dials exactly once, plays audio, closes after remote
   ua.transport.emit("connected");
   assert.equal(ua.calls.length, 1);
   assert.equal(ua.calls[0].target, "sip:0312341234@anything");
+  assert.equal(ua.calls[0].options.sessionDescriptionHandlerOptions.RTCOfferOptions.voiceActivityDetection, false);
   assert.deepEqual(ua.calls[0].options.extraHeaders, [`X-DestTicket: ${wsUrl.searchParams.get("ticket")}`]);
   const session = ua.calls[0].session;
   session.emit("trackAdded");

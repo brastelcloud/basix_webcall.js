@@ -147,7 +147,11 @@ class BasixWebCall extends EventEmitter {
     try {
       this.session = this.ua.invite(`sip:${this._destination}@anything`, {
         extraHeaders: [`X-DestTicket: ${this._wsTicket}`],
-        sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
+        sessionDescriptionHandlerOptions: {
+          constraints: { audio: true, video: false },
+          // Request continuous audio rather than WebRTC silence suppression.
+          RTCOfferOptions: { voiceActivityDetection: false },
+        },
       });
       this._listen(this.session, "progress", response => {
         if (!this._finishing) this.emit("progress", response);

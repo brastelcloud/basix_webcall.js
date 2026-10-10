@@ -48,6 +48,10 @@ leading zeroes are preserved. Calls use `sip:<destination>@anything`, matching
 the PBX routing convention used by the webphone.
 The Request-URI and To header use the actual destination; the ticket is carried
 separately in `X-DestTicket`.
+SIP.js creates the WebRTC offer with `voiceActivityDetection: false` to request
+that browser silence suppression be disabled. This does not disable Gemini or
+Pipecat VAD. Verify negotiated SDP and media flow when diagnosing audio delays,
+because behavior depends on the browser and receiving media server.
 
 See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
 on the server and places calls from the browser.
