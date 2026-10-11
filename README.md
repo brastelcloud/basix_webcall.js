@@ -48,11 +48,10 @@ You must obtain a websocket ticket using your Basix PBX API token and pass it to
 | Browser |              | App Server |              | Basix PBX API |
 +----+----+              +-----+------+              +-----+---------+
      |                         |                           |
-     | 1. Request WS SIP Ticket|                           |
-     |    (Destination)        |                           |
+     | 1. Request ws_sip ticket|                           |
      |------------------------>|                           |
      |                         | 2. gen_ws_ticket          |
-     |                         |    (Destination + Token)  |
+     |                         |    (api token)            |
      |                         |-------------------------->|
      |                         |                           |
      |                         | 3. Short-lived ticket     |
@@ -60,8 +59,8 @@ You must obtain a websocket ticket using your Basix PBX API token and pass it to
      | 4. Return Ticket        |                           |
      |<------------------------|                           |
      |                                                     |
-     | 5. Open WS SIP Connection & Call                    |
-     |    (Using ticket)                                   |
+     | 5. Open ws_sip connection & and make call           |
+     |    (using ticket)                                   |
      |---------------------------------------------------->|
 ```
 ## Reference
