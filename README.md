@@ -1,13 +1,19 @@
 # basix_webcall.js
 
+## Overview
+
 A browser JavaScript library for one audio call to the Basix IP-PBX using SIP.js.
 
 Each instance connects, dials once, then closes its SIP WebSocket and releases
 its media resources when the call ends. It does not register a SIP extension.
 
+## Installation
+
 Install with `npm install`, then import the library in your browser application
 using a CommonJS-compatible bundler. It uses the same pinned SIP.js 0.13.8 fork
 as `basix_webphone.js`.
+
+## Sample Code
 
 ```javascript
 const BasixWebCall = require("basix_webcall");
@@ -34,12 +40,38 @@ function onHangupButtonClick() {
 }
 ```
 
+## Connection flow
+
+You must obtain a websocket ticket using your Basix PBX API token and pass it to the browser:
+
+```
++---------+              +------------+              +---------------+
+| Browser |              | App Server |              | Basix PBX API |
++----+----+              +-----+------+              +-----+---------+
+     |                         |                           |
+     | 1. Request WS SIP Ticket|                           |
+     |    (Destination)        |                           |
+     |------------------------>|                           |
+     |                         | 2. gen_ws_ticket          |
+     |                         |    (Destination + Token)  |
+     |                         |-------------------------->|
+     |                         |                           |
+     |                         | 3. Short-lived ticket     |
+     |                         |<--------------------------|
+     | 4. Return Ticket        |                           |
+     |<------------------------|                           |
+     |                                                     |
+     | 5. Open WS SIP Connection & Call                    |
+     |    (Using ticket)                                   |
+     |---------------------------------------------------->|
+```
+## Reference
+
 `start({ ws_ticket, destination, audioElement? })` returns a promise that resolves
 with `{ cause }` after shutdown, or rejects for connection, microphone, or call
 failures (including busy/rejected calls). Use a new instance for each call.
 `ws_ticket` is passed as the URL-encoded `ticket` query parameter in
 `wss://bcs.brastel.com/basix/api/ws_sip?ticket=<encoded ticket>`.
-
 See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
 on the server and places calls from the browser.
 
