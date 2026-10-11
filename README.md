@@ -10,8 +10,7 @@ its media resources when the call ends. It does not register a SIP extension.
 ## Installation
 
 Install with `npm install`, then import the library in your browser application
-using a CommonJS-compatible bundler. It uses the same pinned SIP.js 0.13.8 fork
-as `basix_webphone.js`.
+using a CommonJS-compatible bundler.
 
 ## Sample Code
 
@@ -72,6 +71,7 @@ with `{ cause }` after shutdown, or rejects for connection, microphone, or call
 failures (including busy/rejected calls). Use a new instance for each call.
 `ws_ticket` is passed as the URL-encoded `ticket` query parameter in
 `wss://bcs.brastel.com/basix/api/ws_sip?ticket=<encoded ticket>`.
+
 See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
 on the server and places calls from the browser.
 
