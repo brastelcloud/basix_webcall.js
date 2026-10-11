@@ -84,7 +84,8 @@ requires HTTPS (or localhost) and the user's permission.
 
 Events: `connected` (transport ready and INVITE created), `progress` (SIP
 provisional response), `accepted` (answered), `audioError` (playback failure),
-and `ended` (`{ cause, error }` after cleanup). `call.state` is one of `idle`,
+`message` (incoming MESSAGE in the active call), and `ended` (`{ cause, error }`
+after cleanup). `call.state` is one of `idle`,
 `connecting`, `calling`, `talking`, `closing`, or `ended`.
 
 `hangup()` cancels setup or hangs up an answered call and returns the same
@@ -98,4 +99,49 @@ browser tab.
 interaction. It throws if the digit is invalid or the call is not in `talking`
 state. It uses WebRTC RTP telephone-event DTMF, with SIP.js's INFO fallback when
 the browser cannot send RTP DTMF.
+
+`sendMessage(body, { contentType? })` sends a SIP MESSAGE within an answered
+call's dialog. `body` must be a string; `contentType` defaults to `text/plain`
+and may be set to a MIME type such as `application/json`. Call it while
+`call.state` is `talking`:
+
+```javascript
+try {
+  const response = await call.sendMessage("Hello from the browser");
+  console.log("MESSAGE accepted", response.statusCode);
+
+  await call.sendMessage(JSON.stringify({ action: "hello" }), {
+    contentType: "application/json",
+  });
+} catch (error) {
+  console.error("MESSAGE failed", error.statusCode, error.message);
+}
+```
+
+The request uses the existing Call-ID, From/To tags, dialog URIs and route set,
+and increments the dialog's CSeq. Its promise resolves with the final 2xx SIP
+response and rejects for invalid arguments, an inactive call, a rejection,
+timeout, transport failure, or a call ending before the response arrives. SIP
+rejections include `error.statusCode` and `error.response`. A MESSAGE rejection
+does not itself end the call. The PBX must support handling in-dialog MESSAGE;
+a successful SIP response does not guarantee that the application acted on its
+contents.
+
+To receive SIP MESSAGE requests, register a `message` callback before starting
+the call:
+
+```javascript
+call.on("message", ({ body, contentType, request }) => {
+  console.log("Received SIP MESSAGE", contentType, body);
+  // request is the SIP.js IncomingRequest, including getHeader(name).
+});
+```
+
+The callback receives messages matching the answered call's Call-ID and
+From/To tags while the call is in `talking` state. `body` is a string (including
+an empty string); `contentType` defaults to `text/plain`. SIP.js automatically
+acknowledges incoming MESSAGE requests with `200 OK`; the callback processes
+their contents and does not need to send a SIP reply. JSON bodies are delivered
+as strings for the application to parse. The internal SIP listener is removed
+during call cleanup.
 

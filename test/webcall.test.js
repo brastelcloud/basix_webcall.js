@@ -67,7 +67,7 @@ function setup(t, { delayedClose = false, inviteError = false, realTransport = f
   const mod = new Module(filename, module);
   mod.filename = filename;
   mod.paths = module.paths;
-  mod.require = name => name === "sip.js" ? { UA, Web: require("sip.js").Web } : require(name);
+  mod.require = name => name === "sip.js" ? { ...require("sip.js"), UA } : require(name);
   mod._compile(fs.readFileSync(filename, "utf8"), filename);
 
   const original = { window: global.window, document: global.document, MediaStream: global.MediaStream,
@@ -296,4 +296,174 @@ test("real transport can close while WebSocket is still connecting", async t => 
   await completion;
   assert.ok(sockets[0].closed);
   assert.equal(call.state, "ended");
+});
+
+// Use the pinned SIP.js request serializer and transaction machinery, with only
+// the transport replaced, to check the actual dialog headers on the wire.
+function messageCall(t) {
+  const fixture = setup(t);
+  fixture.completion = fixture.call.start(args);
+  fixture.uas[0].transport.emit("connected");
+  const session = fixture.call.session;
+  const SIP = require("sip.js");
+  const ua = new SIP.UA({ uri: "webcall@anything", autostart: false, register: false,
+    log: { builtinEnabled: false } });
+  const sent = [];
+  ua.transport = { send: message => { sent.push(message); return Promise.resolve(); } };
+  session.ua = ua;
+  session.dialog = {
+    localSeqnum: 123,
+    id: { callId: "existing-call-id", localTag: "local-tag", remoteTag: "remote-tag" },
+    localUri: SIP.Utils.normalizeTarget("sip:webcall@anything"),
+    remoteUri: SIP.Utils.normalizeTarget("sip:0312341234@anything"),
+    remoteTarget: SIP.Utils.normalizeTarget("sip:contact@pbx.example.com"),
+    routeSet: ["<sip:proxy.example.com;lr>"],
+  };
+  const transactions = () => Object.values(ua.transactions.nict);
+  t.after(() => {
+    for (const transaction of transactions()) transaction.dispose();
+    fixture.call.hangup();
+  });
+  session.emit("accepted", {});
+  return { ...fixture, sent, transactions };
+}
+
+test("SIP MESSAGE uses the existing dialog and resolves only on final success", async t => {
+  const { call, sent, transactions, completion } = messageCall(t);
+  const pending = call.sendMessage("Hello 日本語");
+  assert.equal(sent.length, 1);
+  const wire = sent[0];
+  assert.ok(wire.startsWith("MESSAGE sip:contact@pbx.example.com SIP/2.0\r\n"));
+  assert.ok(wire.includes("To: <sip:0312341234@anything>;tag=remote-tag\r\n"));
+  assert.ok(wire.includes("From: <sip:webcall@anything>;tag=local-tag\r\n"));
+  assert.ok(wire.includes("Call-ID: existing-call-id\r\n"));
+  assert.ok(wire.includes("Route: <sip:proxy.example.com;lr>\r\n"));
+  assert.ok(wire.includes("CSeq: 124 MESSAGE\r\n"));
+  assert.ok(wire.includes("Content-Type: text/plain\r\n"));
+  assert.ok(wire.includes(`Content-Length: ${Buffer.byteLength("Hello 日本語")}\r\n`));
+  assert.ok(wire.endsWith("\r\n\r\nHello 日本語"));
+  let settled = false;
+  pending.then(() => { settled = true; });
+  transactions()[0].receiveResponse({ statusCode: 100, method: "MESSAGE" });
+  await Promise.resolve();
+  assert.equal(settled, false);
+  const response = { statusCode: 200, method: "MESSAGE" };
+  transactions()[0].receiveResponse(response);
+  assert.equal(await pending, response);
+  assert.equal(call.state, "talking");
+  const json = call.sendMessage('{"action":"hello"}', { contentType: "application/json" });
+  assert.ok(sent[1].includes("CSeq: 125 MESSAGE\r\n"));
+  assert.ok(sent[1].includes("Content-Type: application/json\r\n"));
+  transactions().at(-1).receiveResponse({ statusCode: 202, method: "MESSAGE" });
+  await json;
+  call.hangup();
+  await completion;
+  await assert.rejects(call.sendMessage("after hangup"), /answered call/);
+});
+
+test("SIP MESSAGE validates body, content type, and answered-call state", async t => {
+  const { call, uas } = setup(t);
+  await assert.rejects(call.sendMessage("before start"), /answered call/);
+  const completion = call.start(args);
+  uas[0].transport.emit("connected");
+  await assert.rejects(call.sendMessage("before answer"), /answered call/);
+  for (const body of [null, {}, 123]) await assert.rejects(call.sendMessage(body), /body must be a string/);
+  for (const contentType of [null, "", "text", "text/plain\r\nX-Injected: value"]) {
+    await assert.rejects(call.sendMessage("hello", { contentType }), /contentType/);
+  }
+  call.hangup();
+  await completion;
+});
+
+test("SIP MESSAGE rejection, timeout, transport error and hangup settle pending requests", async t => {
+  const { call, transactions, completion } = messageCall(t);
+  const rejected = call.sendMessage("rejected");
+  transactions().at(-1).receiveResponse({ statusCode: 405, method: "MESSAGE" });
+  await assert.rejects(rejected, error => error.statusCode === 405 && error.response.statusCode === 405);
+  const timedOut = call.sendMessage("timeout");
+  transactions().at(-1).timer_F();
+  await assert.rejects(timedOut, /timed out/);
+  const transportFailed = call.sendMessage("transport error");
+  transactions().at(-1).onTransportError(new Error("offline"));
+  await assert.rejects(transportFailed, /transport failed/);
+  assert.equal(call.state, "talking");
+  const first = call.sendMessage("one");
+  const second = call.sendMessage("two");
+  call.hangup();
+  await assert.rejects(first, /Call ended/);
+  await assert.rejects(second, /Call ended/);
+  await completion;
+  assert.equal(call._pendingMessages.size, 0);
+});
+
+test("incoming MESSAGE callbacks are limited to the active call dialog and removed on shutdown", async t => {
+  const { call, uas } = setup(t);
+  const received = [];
+  call.on("message", message => received.push(message));
+  const completion = call.start(args);
+  const ua = uas[0];
+  ua.transport.emit("connected");
+  call.session.dialog = { id: { callId: "call-id", localTag: "local", remoteTag: "remote" } };
+  const request = { callId: "call-id", fromTag: "remote", toTag: "local" };
+  const message = { request, body: "Hello 日本語", contentType: "text/plain; charset=utf-8" };
+  ua.emit("message", message); // Still ringing.
+  assert.equal(received.length, 0);
+  call.session.emit("accepted", {});
+  for (const changed of [{ callId: "other" }, { fromTag: "other" }, { toTag: "other" }, { toTag: undefined }]) {
+    ua.emit("message", { ...message, request: { ...request, ...changed } });
+  }
+  assert.equal(received.length, 0);
+  ua.emit("message", message);
+  assert.deepEqual(received, [{ body: message.body, contentType: message.contentType, request }]);
+  ua.emit("message", { request });
+  assert.deepEqual(received[1], { body: "", contentType: "text/plain", request });
+  assert.equal(call.state, "talking");
+  call.hangup();
+  await completion;
+  ua.emit("message", message);
+  assert.equal(received.length, 2);
+  assert.equal(ua.listenerCount("message"), 0);
+});
+
+test("pinned SIP.js acknowledges an incoming in-dialog MESSAGE and delivers its body to the callback", async t => {
+  const { call, uas, sent, completion } = messageCall(t);
+  const SIP = require("sip.js");
+  const session = call.session;
+  const ua = session.ua;
+  const dialog = session.dialog;
+  dialog.owner = session;
+  dialog.checkInDialogRequest = SIP.Dialog.prototype.checkInDialogRequest;
+  dialog.receiveRequest = SIP.Dialog.prototype.receiveRequest;
+  session.receiveRequest = SIP.Session.prototype.receiveRequest;
+  ua.dialogs[dialog.id.callId + dialog.id.localTag + dialog.id.remoteTag] = dialog;
+  ua.on("message", message => uas[0].emit("message", message));
+  t.after(() => Object.values(ua.transactions.nist).forEach(transaction => transaction.dispose()));
+  const body = JSON.stringify({ text: "Hello 日本語" });
+  const wire = [
+    "MESSAGE sip:webcall@anything SIP/2.0",
+    "Via: SIP/2.0/WSS pbx.example.com;branch=z9hG4bK-incoming-message",
+    "Max-Forwards: 70",
+    "From: <sip:0312341234@anything>;tag=remote-tag",
+    "To: <sip:webcall@anything>;tag=local-tag",
+    "Call-ID: existing-call-id",
+    "CSeq: 200 MESSAGE",
+    "Content-Type: application/json",
+    `Content-Length: ${Buffer.byteLength(body)}`,
+    "", body,
+  ].join("\r\n");
+  const request = SIP.Parser.parseMessage(wire, ua);
+  assert.ok(request);
+  const received = [];
+  call.on("message", message => received.push(message));
+  ua.receiveRequest(request);
+  assert.equal(received.length, 1);
+  assert.equal(received[0].body, body);
+  assert.equal(received[0].contentType, "application/json");
+  assert.equal(received[0].request, request);
+  assert.equal(sent.length, 1);
+  assert.ok(sent[0].startsWith("SIP/2.0 200 OK\r\n"));
+  assert.ok(sent[0].includes("CSeq: 200 MESSAGE\r\n"));
+  assert.equal(call.state, "talking");
+  call.hangup();
+  await completion;
 });

@@ -22,6 +22,7 @@ class BasixWebCall extends EventEmitter {
     this._listeners = [];
     this._finishing = false;
     this._dialed = false;
+    this._pendingMessages = new Set();
     this._onPageHide = () => this.hangup();
   }
 
@@ -107,6 +108,20 @@ class BasixWebCall extends EventEmitter {
       });
       // This library only originates one call, never accepts incoming calls.
       this._listen(this.ua, "invite", session => session.reject());
+      // SIP.js delivers MESSAGE at the UA and automatically replies 200.
+      this._listen(this.ua, "message", message => {
+        const request = message.request;
+        const dialog = this.session && this.session.dialog;
+        if (this.state !== "talking" || !dialog || !request ||
+            request.callId !== dialog.id.callId ||
+            request.fromTag !== dialog.id.remoteTag ||
+            request.toTag !== dialog.id.localTag) return;
+        this.emit("message", {
+          body: message.body || "",
+          contentType: message.contentType || "text/plain",
+          request,
+        });
+      });
       this._connectionTimer = setTimeout(() => {
         this._finish(new Error("SIP WebSocket connection timed out"));
       }, 10000);
@@ -132,6 +147,61 @@ class BasixWebCall extends EventEmitter {
       throw new Error("DTMF requires an answered call");
     }
     return this.session.dtmf(key);
+  }
+
+  /** Send MESSAGE in the answered call's dialog; resolve on a 2xx response. */
+  sendMessage(body, { contentType = "text/plain" } = {}) {
+    if (typeof body !== "string") {
+      return Promise.reject(new TypeError("MESSAGE body must be a string"));
+    }
+    if (typeof contentType !== "string" || /[\x00-\x1f\x7f]/.test(contentType) ||
+        !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+(?: *;.+)?$/i.test(contentType)) {
+      return Promise.reject(new TypeError("MESSAGE contentType must be a MIME type without control characters"));
+    }
+    if (this.state !== "talking" || !this.session || !this.session.dialog) {
+      return Promise.reject(new Error("MESSAGE requires an answered call"));
+    }
+    const session = this.session;
+    const dialog = session.dialog;
+    return new Promise((resolve, reject) => {
+      const settle = (error, response) => {
+        if (!this._pendingMessages.delete(settle)) return;
+        if (error) reject(error);
+        else resolve(response);
+      };
+      this._pendingMessages.add(settle);
+      try {
+        // Build with toUri explicitly: this pinned SIP.js has a ToUri typo in
+        // Session.sendRequest(), which otherwise substitutes the Contact URI.
+        const request = new SIP.OutgoingRequest("MESSAGE", dialog.remoteTarget, session.ua, {
+          cseq: ++dialog.localSeqnum,
+          callId: dialog.id.callId,
+          fromUri: dialog.localUri,
+          fromTag: dialog.id.localTag,
+          toUri: dialog.remoteUri,
+          toTag: dialog.id.remoteTag,
+          routeSet: dialog.routeSet,
+        }, [`Content-Type: ${contentType}`], body);
+        request.dialog = dialog;
+        new SIP.RequestSender({
+          request,
+          onRequestTimeout: () => settle(new Error("SIP MESSAGE timed out")),
+          onTransportError: () => settle(new Error("SIP MESSAGE transport failed")),
+          receiveResponse: response => {
+            if (response.statusCode < 200) return;
+            if (response.statusCode < 300) settle(null, response);
+            else {
+              const error = new Error(`SIP MESSAGE rejected: ${response.statusCode}`);
+              error.statusCode = response.statusCode;
+              error.response = response;
+              settle(error);
+            }
+          },
+        }, session.ua).send();
+      } catch (error) {
+        settle(error);
+      }
+    });
   }
 
   _listen(emitter, event, listener) {
@@ -208,6 +278,7 @@ class BasixWebCall extends EventEmitter {
     if (this._finishing) return;
     this._finishing = true;
     this.state = "closing";
+    for (const settle of this._pendingMessages) settle(new Error("Call ended before SIP MESSAGE completed"));
     this._result = { cause: cause || (error && error.cause) || "ended" };
     this._error = error;
     clearTimeout(this._connectionTimer);
