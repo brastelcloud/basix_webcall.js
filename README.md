@@ -41,7 +41,7 @@ function onHangupButtonClick() {
 
 ## Connection flow
 
-You must obtain a websocket ticket using your Basix PBX API token and pass it to the browser:
+You must obtain a ws_sip ticket (a ticket to permit to open a websocket connection with Basix sip server) using your Basix PBX API token and pass it to the browser:
 
 ```
 +---------+              +------------+              +---------------+
@@ -50,17 +50,19 @@ You must obtain a websocket ticket using your Basix PBX API token and pass it to
      |                         |                           |
      | 1. Request ws_sip ticket|                           |
      |------------------------>|                           |
-     |                         | 2. gen_ws_ticket          |
-     |                         |    (api token)            |
+     |                         |                           |
+     |                         | 2. Call gen_ws_ticket     |
+     |                         |    (using api token)      |
      |                         |-------------------------->|
      |                         |                           |
-     |                         | 3. Short-lived ticket     |
+     |                         | 3. Return ws_sip ticket   |
      |                         |<--------------------------|
-     | 4. Return Ticket        |                           |
+     |                         |                           |
+     | 4. Return ws_sip ticket |                           |
      |<------------------------|                           |
      |                                                     |
      | 5. Open ws_sip connection & and make call           |
-     |    (using ticket)                                   |
+     |    (using ws_sip ticket)                            |
      |---------------------------------------------------->|
 ```
 ## Reference
