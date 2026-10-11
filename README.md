@@ -56,6 +56,13 @@ because behavior depends on the browser and receiving media server.
 See [sample_app](sample_app/README.md) for a Node web app that obtains tickets
 on the server and places calls from the browser.
 
+The live browser test helper lives in
+`/usr/local/src/git/brastel/basix_tests/browser_webcall`. It runs this library
+in headless Chromium and is used by
+`basix/centrex/tests/functional_new2/cti.basix_webcall.test.js` to verify a real
+call, audio RTP in both directions, DTMF, and WebSocket closure. See the helper's
+README for its one-time dependency and Chromium installation.
+
 The library creates and removes an autoplay audio element by default. You may
 supply an existing audio element; it is paused and detached during cleanup but
 not removed. If the browser blocks playback, handle `audioError` by showing a
