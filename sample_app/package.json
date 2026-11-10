@@ -12,6 +12,5 @@
     "test": "node test/server.test.js"
   },
   "dependencies": { "basix_webcall": "file:.." },
-  "devDependencies": { "esbuild": "^0.25.0" },
-  "overrides": { "crypto-js": "^4.2.0" }
+  "devDependencies": { "esbuild": "^0.25.0" }
 }
